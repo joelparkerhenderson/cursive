@@ -446,3 +446,12 @@ impl View for TextView {
         content.size_cache = Some(SizeCache::build(my_size, size));
     }
 }
+
+crate::recipe!(TextView, |config, _context| {
+    let content = config["content"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_default();
+
+    Ok(TextView::new(content))
+});

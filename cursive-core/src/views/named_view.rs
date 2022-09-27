@@ -96,9 +96,7 @@ impl<T: View + 'static> ViewWrapper for NamedView<T> {
         match selector {
             &Selector::Name(name) if name == self.name => callback(self),
             s => {
-                if let Ok(mut v) = self.view.try_borrow_mut() {
-                    v.deref_mut().call_on_any(s, callback);
-                }
+                self.with_view_mut(|v| v.call_on_any(s, callback));
             }
         }
     }
@@ -119,3 +117,8 @@ impl<T: View + 'static> ViewWrapper for NamedView<T> {
         }
     }
 }
+
+crate::recipe!(with name, |config, context| {
+    let name = context.resolve(config, "name");
+    |view| $crate::views::NamedView::new(name, view)
+})

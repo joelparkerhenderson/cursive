@@ -67,6 +67,8 @@ pub mod theme;
 pub mod traits;
 pub mod vec;
 
+pub mod builder;
+
 mod cursive;
 mod cursive_run;
 mod dump;
