@@ -118,7 +118,7 @@ impl<T: View + 'static> ViewWrapper for NamedView<T> {
     }
 }
 
-crate::recipe!(with name, |config, context| {
-    let name = context.resolve(config, "name");
-    |view| $crate::views::NamedView::new(name, view)
-})
+// crate::recipe!(NamedView with name, |config, context| {
+//     let name = context.resolve(config, "name");
+//     |view| $crate::views::NamedView::new(name, view)
+// })
