@@ -447,11 +447,9 @@ impl View for TextView {
     }
 }
 
-crate::recipe!(TextView, |config, _context| {
-    let content = config["content"]
-        .as_str()
-        .map(String::from)
-        .unwrap_or_default();
+crate::recipe!(TextView, |config, context| {
+    let content: String =
+        context.resolve(&config["content"]).unwrap_or_default();
 
     Ok(TextView::new(content))
 });

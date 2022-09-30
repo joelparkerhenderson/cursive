@@ -79,3 +79,4 @@ required-features = ["ansi"]
 rand = "0.8"
 atty = "0.2"
 pretty-bytes = "0.2"
+serde_json = "1.0.85"

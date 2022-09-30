@@ -19,7 +19,7 @@
 //! - An implementation module, conditionally compiled.
 use crate::views::BoxedView;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use std::any::Any;
 
@@ -31,30 +31,14 @@ pub type Object = serde_json::Map<String, serde_json::Value>;
 
 /// Can build a view from a config.
 pub type Builder =
-    fn(serde_json::Value, &mut Context) -> Result<BoxedView, ()>;
+    fn(&serde_json::Value, &mut Context) -> Result<BoxedView, ()>;
 
 /// Can build a wrapper from a config.
 pub type WrapperBuilder =
-    fn(serde_json::Value, &mut Context) -> Result<Wrapper, ()>;
+    fn(&serde_json::Value, &mut Context) -> Result<Wrapper, ()>;
 
 /// Can wrap a view.
 pub type Wrapper = Box<dyn FnOnce(BoxedView) -> BoxedView>;
-
-/*
-/// Foo
-pub fn with_modifiers<V: crate::view::View>(
-    config: &serde_json::Value,
-    view: V,
-) -> BoxedView {
-    fn _foo<V: crate::view::View>(
-        config: &serde_json::Value,
-    ) -> Option<impl FnOnce(V) -> BoxedView> {
-        let array = config.get("with")?.as_array()?;
-        for wrapper in array {}
-        None
-    }
-}
-*/
 
 /// Everything needed to prepare a view from a config.
 /// - Current recipes
@@ -66,28 +50,89 @@ pub struct Context {
     variables: HashMap<String, Box<dyn Any>>,
 }
 
+/// Error during config parsing.
+#[derive(Debug)]
+pub enum Error {
+    /// A config object was empty.
+    EmptyConfig,
+    /// A recipe was not found
+    RecipeNotFound(String),
+    /// A recipe failed to run.
+    RecipeFailed,
+}
+
+/// Error caused by an invalid config.
+pub struct ConfigError {
+    /// Variable names present more than once in the config.
+    ///
+    /// Each variable can only be read once.
+    pub duplicate_vars: HashSet<String>,
+
+    /// Variable names not registered in the context before loading the config.
+    pub missing_vars: HashSet<String>,
+}
+
+impl ConfigError {
+    /// Creates a config error if any issue is detected.
+    fn from(
+        duplicate_vars: HashSet<String>,
+        missing_vars: HashSet<String>,
+    ) -> Result<(), Self> {
+        if duplicate_vars.is_empty() && missing_vars.is_empty() {
+            Ok(())
+        } else {
+            Err(Self {
+                duplicate_vars,
+                missing_vars,
+            })
+        }
+    }
+}
+
+// Parse the given config, and yields all the variable names found.
+fn inspect_variables<F: FnMut(&str)>(config: &Config, on_var: &mut F) {
+    match config {
+        Config::String(name) => {
+            if let Some(name) = name.strip_prefix("$") {
+                on_var(name);
+            }
+        }
+        Config::Array(array) => {
+            for value in array {
+                inspect_variables(value, on_var);
+            }
+        }
+        Config::Object(object) => {
+            for value in object.values() {
+                inspect_variables(value, on_var);
+            }
+        }
+        _ => (),
+    }
+}
+
 /// Can be created from config
 pub trait FromConfig {
     /// Build from a config
-    fn from_config(config: Config) -> Option<Self>
+    fn from_config(config: &Config) -> Option<Self>
     where
         Self: Sized;
 }
 
 impl FromConfig for String {
-    fn from_config(config: Config) -> Option<Self> {
+    fn from_config(config: &Config) -> Option<Self> {
         config.as_str().map(Into::into)
     }
 }
 
 impl FromConfig for u64 {
-    fn from_config(config: Config) -> Option<Self> {
+    fn from_config(config: &Config) -> Option<Self> {
         config.as_u64()
     }
 }
 
 impl FromConfig for crate::Vec2 {
-    fn from_config(config: Config) -> Option<Self> {
+    fn from_config(config: &Config) -> Option<Self> {
         let x = config[0].as_u64()?;
         let y = config[1].as_u64()?;
         Some(crate::Vec2::new(x as usize, y as usize))
@@ -114,14 +159,17 @@ impl Context {
     }
 
     /// Resolve a value
-    pub fn resolve<T: FromConfig>(
+    pub fn resolve<T: FromConfig + 'static>(
         &mut self,
-        name: &str,
-        config: &Object,
-    ) -> Option<T> {
+        config: &Config,
+    ) -> Result<T, ()> {
         // First, check if config.get(name) is a string starting with $
-        // If so, try to resolve it instead
-        None
+        // If so, try to resolve it from variables instead
+        if let Some(name) = config.as_str().and_then(|s| s.strip_prefix("$")) {
+            self.load(name).map(|b| *b)
+        } else {
+            T::from_config(config).ok_or(())
+        }
     }
 
     /// Store a new variable for interpolation.
@@ -137,43 +185,99 @@ impl Context {
     }
 
     /// Loads a variable of the given type.
-    pub fn load<T: Any>(&mut self, name: &str) -> Option<Box<T>> {
-        self.variables.remove(name).and_then(|b| b.downcast().ok())
+    pub fn load<T: Any>(&mut self, name: &str) -> Result<Box<T>, ()> {
+        self.variables
+            .remove(name)
+            .ok_or(())
+            .and_then(|b| b.downcast().map_err(|_| ()))
     }
 
     /// Build a wrapper with the given config
-    pub fn build_wrapper(&mut self, with: &Object) -> Option<Wrapper> {
-        None
+    pub fn build_wrapper(
+        &mut self,
+        config: &Object,
+    ) -> Result<Wrapper, Error> {
+        // Expect a single key
+        let (key, value) =
+            config.into_iter().next().ok_or(Error::EmptyConfig)?;
+
+        let recipe = self
+            .wrappers
+            .get(key)
+            .ok_or_else(|| Error::RecipeNotFound(key.into()))?;
+
+        let wrapper =
+            (recipe)(value, self).map_err(|_| Error::RecipeFailed)?;
+
+        Ok(wrapper)
+    }
+
+    /// Validate a config.
+    ///
+    /// Returns an error if any variable is missing or used more than once.
+    pub fn validate(&self, config: &Config) -> Result<(), ConfigError> {
+        let mut vars = HashSet::new();
+
+        let mut duplicates = HashSet::new();
+
+        inspect_variables(config, &mut |variable| {
+            if vars.insert(variable.to_string()) {
+                // Error! We found a duplicate!
+                duplicates.insert(variable.to_string());
+            }
+        });
+
+        let not_found: HashSet<String> = vars
+            .into_iter()
+            .filter(|var| !self.variables.contains_key(var))
+            .collect();
+
+        ConfigError::from(duplicates, not_found)
+    }
+
+    fn get_wrappers(
+        &mut self,
+        config: &Config,
+    ) -> Result<Vec<Wrapper>, Error> {
+        fn get_with(config: &Config) -> Option<&Vec<Config>> {
+            config.as_object()?["with"].as_array()
+        }
+
+        let with = match get_with(config) {
+            Some(with) => with,
+            None => return Ok(Vec::new()),
+        };
+
+        with.into_iter()
+            .map(|with| {
+                self.build_wrapper(with.as_object().ok_or(Error::EmptyConfig)?)
+            })
+            .collect()
     }
 
     /// Build a new view from the given config.
-    pub fn build(&mut self, config: Object) -> Result<BoxedView, ()> {
+    pub fn build(&mut self, config: &Object) -> Result<BoxedView, Error> {
         // Expect a single key
-        let (key, mut value) = config.into_iter().next().ok_or(())?;
+        let (key, value) =
+            config.into_iter().next().ok_or(Error::EmptyConfig)?;
 
-        let with: Vec<Wrapper> = value
-            .as_object_mut()
-            .and_then(|o| o.remove("with"))
-            .and_then(|with| {
-                Some(
-                    with.as_array()?
-                        .into_iter()
-                        .filter_map(|with| {
-                            self.build_wrapper(with.as_object()?)
-                        })
-                        .collect(),
-                )
-            })
-            .unwrap_or_else(Vec::new);
+        let with = self.get_wrappers(value)?;
 
         // This is a simple function, it's copy so doesn't borrow self.
-        let recipe = self.recipes.get(&key).ok_or(())?;
+        let recipe = self
+            .recipes
+            .get(key)
+            .ok_or_else(|| Error::RecipeNotFound(key.into()))?;
 
-        let view = (recipe)(value, self);
+        let mut view =
+            (recipe)(value, self).map_err(|_| Error::RecipeFailed)?;
 
         // Now, apply optional wrappers
+        for wrapper in with {
+            view = (wrapper)(view);
+        }
 
-        view
+        Ok(view)
     }
 }
 
@@ -201,58 +305,70 @@ inventory::collect!(WrapperRecipe);
 #[macro_export]
 /// Define a recipe to build this view from a config file.
 macro_rules! recipe {
-    // ($t:ty with $name:ident, $builder:expr) => {
-    //     #[cfg(feature = "builder")]
-    //     inventory::submit! {
-    //         $crate::builder::Recipe {
-    //             name: $name,
-    //             builder: |config, context| {
-    //                 let builder: fn(::serde_json::Value, &mut $crate::builder::Context) -> Result<$t,()> = $builder;
-    //                 (builder)(config, context).map($crate::views::BoxedView::boxed)
-    //             }
-    //         }
-    //     }
-    // };
+    (with $name:ident as $t:ty, $builder:expr) => {
+        #[cfg(feature = "builder")]
+        inventory::submit! {
+            $crate::builder::WrapperRecipe {
+                name: stringify!($name),
+                builder: |config, context| {
+                    let builder: fn(&::serde_json::Value, &mut $crate::builder::Context) -> Result<_,()> = $builder;
+                    let wrapper = (builder)(config, context)?;
+
+                    Ok(Box::new(move |view| {
+                        let view = (wrapper)(view);
+                        $crate::views::BoxedView::boxed(view)
+                    }))
+                }
+            }
+        }
+    };
     ($t:ty as $name:expr, $builder:expr) => {
         #[cfg(feature = "builder")]
         inventory::submit! {
             $crate::builder::Recipe {
                 name: $name,
                 builder: |config, context| {
-                    let builder: fn(::serde_json::Value, &mut $crate::builder::Context) -> Result<$t,()> = $builder;
+                    let builder: fn(&::serde_json::Value, &mut $crate::builder::Context) -> Result<$t,()> = $builder;
                     (builder)(config, context).map($crate::views::BoxedView::boxed)
                 }
             }
         }
     };
     ($t:ty, $builder:expr) => {
-        $crate::recipe!($t as "$t", $builder);
+        $crate::recipe!($t as stringify!($t), $builder);
     };
 }
 
-/*
-pub trait FromConfig: crate::View {
-    fn name() -> &'static str;
-    fn from_config(config: serde_json::Value) -> Result<Self, ()>
-    where
-        Self: Sized;
-}
+#[cfg(test)]
+mod tests {
 
-impl Recipe {
-    pub fn from<T: FromConfig>() -> Self {
-        Recipe {
-            name: T::name(),
-            builder: |config| T::from_config(config).map(BoxedView::boxed),
-        }
+    #[test]
+    fn test_load() {
+        use crate::view::Finder;
+
+        let mut context = crate::builder::Context::new();
+
+        let config = serde_json::json!({
+            "TextView": {
+                "content": "Foo",
+                "with": [
+                    {
+                        "name": "text"
+                    }
+                ]
+            }
+        });
+
+        let mut res = context.build(config.as_object().unwrap()).unwrap();
+
+        let content = res
+            .call_on_name("text", |v: &mut crate::views::TextView| {
+                v.get_content()
+            })
+            .unwrap();
+
+        let content = content.source();
+
+        assert_eq!(content, "Foo");
     }
 }
-*/
-
-/// Registry of recipes to build views.
-#[cfg(feature = "builder")]
-pub struct RecipeRegistry {
-    recipes: HashMap<String, Recipe>,
-}
-
-#[cfg(feature = "builder")]
-impl RecipeRegistry {}
