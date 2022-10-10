@@ -1,0 +1,37 @@
+# This is the config for a small app
+Dialog:
+  title: $title
+  child:
+    LinearLayout:
+      children:
+        - TextView: Intelligent  detector
+        - DummyView
+        # Some EditView with a prompt.
+        - LinearLayout:
+            orientation: horizontal
+            children:
+              - TextView: "Please write:"
+              - DummyView
+              - EditView:
+                  on_edit: $on_edit
+                  with:
+                    - name: edit
+                    - full_width
+        - DummyView:
+            with:
+              - fixed_height: 2
+        # Give the TextView a name so we can update it
+        - TextView:
+            with:
+              - name: status
+      with:
+        - padding: 1
+        - full_screen
+  with:
+    - layer
+    - shadow
+    - padding:
+        left: 2
+        right: 2
+        top: 1
+        bottom: 1
