@@ -230,7 +230,7 @@ impl LinearLayout {
 
     /// Attemps to set the focus on the given child.
     ///
-    /// Returns `Err(())` if `index >= self.len()`, or if the view at the
+    /// Returns `Err(ViewNotFound)` if `index >= self.len()`, or if the view at the
     /// given index does not accept focus.
     pub fn set_focus_index(
         &mut self,
@@ -772,3 +772,37 @@ impl View for LinearLayout {
         rect + offset
     }
 }
+
+crate::recipe!(LinearLayout, |config, context| {
+    let orientation = match config.get("orientation") {
+        Some(orientation) => context.resolve(orientation)?,
+        None => direction::Orientation::Vertical,
+    };
+
+    let mut layout = LinearLayout::new(orientation);
+
+    if let Some(children) = config.get("children") {
+        let children = children.as_array().ok_or_else(|| {
+            crate::builder::Error::InvalidConfig {
+                message: "LinearLayout.children should be an array.".into(),
+                config: children.clone(),
+            }
+        })?;
+
+        for child in children {
+            layout.add_child(context.build(child)?);
+        }
+    }
+
+    if let Some(focus) = config.get("focus") {
+        let focus = context.resolve(focus)?;
+        layout.set_focus_index(focus).map_err(|_| {
+            crate::builder::Error::InvalidConfig {
+                message: "LinearLayout.focus cannot be larger than the number of views.".into(),
+                config: config.clone(),
+            }
+        })?;
+    }
+
+    Ok(layout)
+});

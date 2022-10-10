@@ -51,3 +51,7 @@ impl<T: View> ViewWrapper for Layer<T> {
         self.view.draw(printer);
     }
 }
+
+crate::recipe!(with layer, |_context, _config| {
+    Ok(Layer::new)
+});

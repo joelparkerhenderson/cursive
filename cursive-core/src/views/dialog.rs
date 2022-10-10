@@ -941,3 +941,17 @@ impl View for Dialog {
         self.invalidated || self.content.needs_relayout()
     }
 }
+
+crate::recipe!(Dialog, |config, context| {
+    let mut dialog = Dialog::new();
+
+    if let Some(title) = config.get("title") {
+        dialog.set_title(context.resolve::<String>(title)?);
+    }
+
+    if let Some(child) = config.get("child") {
+        dialog.set_content(context.build(child)?);
+    }
+
+    Ok(dialog)
+});

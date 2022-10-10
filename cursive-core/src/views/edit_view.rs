@@ -237,6 +237,7 @@ impl EditView {
     ///
     /// If you need a mutable closure and don't care about the recursive
     /// aspect, see [`set_on_edit_mut`](#method.set_on_edit_mut).
+    // #[crate::recipe_cb] // This will add a `set_on_edit_cb` method and a `on_edit_cb` method.
     pub fn set_on_edit<F>(&mut self, callback: F)
     where
         F: Fn(&mut Cursive, &str, usize) + 'static,
@@ -277,6 +278,38 @@ impl EditView {
         F: Fn(&mut Cursive, &str, usize) + 'static,
     {
         self.with(|v| v.set_on_edit(callback))
+    }
+
+    /// Helper function to wrap a callback for the on_edit method.
+    ///
+    /// Auto-generated?
+    pub fn on_edit_cb<F>(
+        callback: F,
+    ) -> Rc<dyn Fn(&mut Cursive, &str, usize) + 'static>
+    where
+        F: Fn(&mut Cursive, &str, usize) + 'static,
+    {
+        Rc::new(callback)
+    }
+
+    /// Foo
+    /// Auto-generated?
+    pub fn set_on_edit_cb(
+        &mut self,
+        config: &crate::builder::Config,
+        context: &crate::builder::Context,
+    ) -> Result<(), crate::builder::Error> {
+        if config.is_null() {
+            // Null means there never was a cb to begin with
+            return Ok(());
+        }
+
+        let on_edit: Rc<dyn Fn(&mut Cursive, &str, usize)> =
+            context.resolve_as_var(config)?;
+
+        self.set_on_edit(move |s, c, p| (*on_edit)(s, c, p));
+
+        Ok(())
     }
 
     /// Sets a mutable callback to be called when `<Enter>` is pressed.
@@ -710,3 +743,15 @@ impl View for EditView {
         Rect::from_size((x, 0), (char_width, 1))
     }
 }
+
+crate::recipe!(EditView, |config, context| {
+    let mut edit_view = EditView::new();
+
+    if let Some(content) = config.get("content") {
+        edit_view.set_content(context.resolve::<String>(content)?);
+    }
+
+    edit_view.set_on_edit_cb(&config["on_edit"], context)?;
+
+    Ok(edit_view)
+});

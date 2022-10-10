@@ -80,3 +80,15 @@ impl<V: View> ViewWrapper for PaddedView<V> {
         self.view.important_area(inner_size) + self.margins.top_left()
     }
 }
+
+crate::recipe!(PaddedView, |config, context| {
+    let margins = context.resolve(&config["margins"])?;
+    let child = context.build(&config["child"])?;
+
+    Ok(PaddedView::new(margins, child))
+});
+
+crate::recipe!(with padding, |config, context| {
+    let margins = context.resolve(config)?;
+    Ok(move |view| PaddedView::new(margins, view))
+});

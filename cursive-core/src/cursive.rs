@@ -117,7 +117,7 @@ impl Cursive {
 
     pub(crate) fn layout(&mut self, size: Vec2) {
         self.last_size = size;
-        let offset = if self.menubar.autohide { 0 } else { 1 };
+        let offset = usize::from(!self.menubar.autohide);
         let size = size.saturating_sub((0, offset));
         self.root.layout(size);
     }
@@ -128,7 +128,7 @@ impl Cursive {
         let selected = self.menubar.receive_events();
 
         // Print the stackview background before the menubar
-        let offset = if self.menubar.autohide { 0 } else { 1 };
+        let offset = usize::from(!self.menubar.autohide);
 
         // The printer for the stackview
         let sv_printer = printer.offset((0, offset)).focused(!selected);
@@ -831,7 +831,7 @@ impl Cursive {
         if self.menubar.receive_events() {
             self.menubar.on_event(event).process(self);
         } else {
-            let offset = if self.menubar.autohide { 0 } else { 1 };
+            let offset = usize::from(!self.menubar.autohide);
 
             let result =
                 View::on_event(&mut self.root, event.relativized((0, offset)));

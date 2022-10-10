@@ -118,7 +118,7 @@ impl<T: View + 'static> ViewWrapper for NamedView<T> {
     }
 }
 
-crate::recipe!(with name as NamedView<BoxedView>, |config, context| {
+crate::recipe!(with name, |config, context| {
     let name: String = context.resolve(config)?;
     Ok(|view| crate::views::NamedView::new(name, view))
 });

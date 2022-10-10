@@ -448,8 +448,16 @@ impl View for TextView {
 }
 
 crate::recipe!(TextView, |config, context| {
-    let content: String =
-        context.resolve(&config["content"]).unwrap_or_default();
+    let content = match config {
+        crate::builder::Config::String(content) => content.into(),
+        crate::builder::Config::Object(config) => {
+            match config.get("content") {
+                Some(content) => context.resolve(content)?,
+                None => String::new(),
+            }
+        }
+        _ => String::new(),
+    };
 
     Ok(TextView::new(content))
 });

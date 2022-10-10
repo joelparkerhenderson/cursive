@@ -13,3 +13,5 @@ impl View for DummyView {
         false
     }
 }
+
+crate::recipe!(DummyView, |_config, _context| { Ok(DummyView) });
