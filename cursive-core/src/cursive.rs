@@ -981,3 +981,9 @@ impl Cursive {
         self.clear();
     }
 }
+
+// Callback recipe
+crate::var_recipe!("Cursive.quit", |_config, _context| {
+    let cb: std::rc::Rc<dyn Fn(&mut Cursive)> = std::rc::Rc::new(|s| s.quit());
+    Ok(cb)
+});

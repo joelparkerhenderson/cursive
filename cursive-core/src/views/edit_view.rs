@@ -293,6 +293,7 @@ impl EditView {
     }
 
     /// Foo
+    ///
     /// Auto-generated?
     pub fn set_on_edit_cb(
         &mut self,

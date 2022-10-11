@@ -13,6 +13,7 @@ use crate::{
 };
 use std::cell::Cell;
 use std::cmp::{max, min};
+use std::rc::Rc;
 use unicode_width::UnicodeWidthStr;
 
 /// Identifies currently focused element in [`Dialog`].
@@ -223,6 +224,37 @@ impl Dialog {
     {
         self.buttons.push(ChildButton::new(label, cb));
         self.invalidate();
+    }
+
+    /// Foo
+    /// Auto-generated?
+    pub fn add_button_cb<S: Into<String>>(
+        &mut self,
+        label: S,
+        config: &crate::builder::Config,
+        context: &crate::builder::Context,
+    ) -> Result<(), crate::builder::Error> {
+        if config.is_null() {
+            // Null means there never was a cb to begin with
+            return Ok(());
+        }
+
+        let callback: Rc<dyn Fn(&mut Cursive)> =
+            context.resolve_as_var(config)?;
+
+        self.add_button(label, move |s| (*callback)(s));
+
+        Ok(())
+    }
+
+    /// Helper function to wrap a callback for the button method.
+    ///
+    /// Auto-generated?
+    pub fn button_cb<F>(callback: F) -> Rc<dyn Fn(&mut Cursive)>
+    where
+        F: Fn(&mut Cursive) + 'static,
+    {
+        Rc::new(callback)
     }
 
     /// Returns the number of buttons on this dialog.
@@ -953,5 +985,24 @@ crate::recipe!(Dialog, |config, context| {
         dialog.set_content(context.build(child)?);
     }
 
+    if let Some(buttons) = config["buttons"].as_array() {
+        for button in buttons {
+            if let Some(button) = button.as_object() {
+                // Expect a key (the button label) and the callback as value.
+                for (key, value) in button {
+                    dialog.add_button_cb(key, value, context)?;
+                }
+            }
+        }
+    }
+
     Ok(dialog)
+});
+
+crate::var_recipe!("Dialog.info", |config, context| {
+    let message: String = context.resolve(config)?;
+    let callback: Rc<dyn Fn(&mut Cursive)> = Rc::new(move |s| {
+        s.add_layer(Dialog::info(&message));
+    });
+    Ok(callback)
 });

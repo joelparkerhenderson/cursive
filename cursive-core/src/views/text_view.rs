@@ -449,7 +449,7 @@ impl View for TextView {
 
 crate::recipe!(TextView, |config, context| {
     let content = match config {
-        crate::builder::Config::String(content) => content.into(),
+        crate::builder::Config::String(_) => context.resolve(config)?,
         crate::builder::Config::Object(config) => {
             match config.get("content") {
                 Some(content) => context.resolve(content)?,

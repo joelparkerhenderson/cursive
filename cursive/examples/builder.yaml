@@ -4,29 +4,26 @@ Dialog:
   child:
     LinearLayout:
       children:
-        - TextView: Intelligent  detector
+        - TextView: Fancy prompt
         - DummyView
         # Some EditView with a prompt.
-        - LinearLayout:
-            orientation: horizontal
-            children:
-              - TextView: "Please write:"
-              - DummyView
-              - EditView:
-                  on_edit: $on_edit
-                  with:
-                    - name: edit
-                    - full_width
-        - DummyView:
-            with:
-              - fixed_height: 2
+        - LabeledField:
+            label: "Please write:"
+            on_edit: $on_edit
+            name: edit
+        - VSpace: 2
         # Give the TextView a name so we can update it
         - TextView:
             with:
               - name: status
       with:
         - padding: 1
-        - full_screen
+        - full_width
+        - fixed_height: 9
+  buttons:
+    - Info:
+        $Dialog.info: This is an example of template-driven callback.
+    - Exit: $Cursive.quit
   with:
     - layer
     - shadow

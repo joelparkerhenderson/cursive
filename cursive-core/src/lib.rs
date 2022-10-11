@@ -67,6 +67,10 @@ pub mod theme;
 pub mod traits;
 pub mod vec;
 
+#[cfg(feature = "builder")]
+pub use inventory::submit;
+
+#[macro_use]
 pub mod builder;
 
 mod cursive;

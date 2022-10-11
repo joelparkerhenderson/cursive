@@ -50,6 +50,7 @@ version = "0.25"
 
 [features]
 doc-cfg = ["cursive_core/doc-cfg"]  # Enable doc_cfg, a nightly-only doc feature.
+builder = ["cursive_core/builder"]
 blt-backend = ["bear-lib-terminal"]
 default = ["ncurses-backend"]
 ncurses-backend = ["ncurses", "maplit"]
