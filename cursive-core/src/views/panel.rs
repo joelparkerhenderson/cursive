@@ -139,3 +139,47 @@ impl<V: View> ViewWrapper for Panel<V> {
         self.invalidated || self.view.needs_relayout()
     }
 }
+
+// TODO: reduce code duplication between recipes for the same view.
+crate::recipe!(Panel, |config, context| {
+    let child = context.build(&config["child"])?;
+
+    let mut panel = crate::views::Panel::new(child);
+
+    if let Some(title) = config.get("title") {
+        panel.set_title(context.resolve::<String>(title)?);
+    }
+
+    if let Some(position) = config.get("title_position") {
+        panel.set_title_position(context.resolve(position)?);
+    }
+
+    Ok(panel)
+});
+
+crate::recipe!(with panel, |config, context| {
+    let title = match config {
+        crate::builder::Config::String(_) => context.resolve(config)?,
+        crate::builder::Config::Object(config) => {
+            match config.get("title") {
+                Some(title) => context.resolve(title)?,
+                None => String::new()
+            }
+        }
+        _ => String::new(),
+    };
+
+    let title_position = config.get("title_position")
+        .map(|config| context.resolve(config))
+        .transpose()?;
+
+    Ok(move |view| {
+        let mut panel = crate::views::Panel::new(view).title(title);
+
+        if let Some(title_position) = title_position {
+            panel.set_title_position(title_position);
+        }
+
+        panel
+    })
+});

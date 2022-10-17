@@ -120,13 +120,6 @@ struct Variables {
     parent: Option<Rc<Variables>>,
 }
 
-trait FnOneArg {
-    type Arg<'a>;
-    type Output;
-
-    fn call<'a, 'b>(&'a self, a: Self::Arg<'b>) -> Self::Output;
-}
-
 /// Error during config parsing.
 #[derive(Debug)]
 pub enum Error {
@@ -281,6 +274,17 @@ impl FromConfig for crate::view::Margins {
     }
 }
 
+impl FromConfig for crate::align::HAlign {
+    fn from_config(config: &Config) -> Option<Self> {
+        Some(match config.as_str()? {
+            "Left" | "left" => Self::Left,
+            "Center" | "center" => Self::Center,
+            "Right" | "right" => Self::Right,
+            _ => return None,
+        })
+    }
+}
+
 new_default!(Context);
 
 impl Context {
@@ -401,6 +405,20 @@ impl Context {
     {
         if let Some(recipes) = Rc::get_mut(&mut self.recipes) {
             recipes.wrappers.insert(name.into(), Box::new(recipe));
+        }
+    }
+
+    /// Register a new variable recipe _for this context only_.
+    pub fn register_variable_recipe<F>(
+        &mut self,
+        name: impl Into<String>,
+        recipe: F,
+    ) where
+        F: Fn(&Config, &Context) -> Result<Box<dyn Any>, Error> + 'static,
+    {
+        if let Some(variables) = Rc::get_mut(&mut self.variables) {
+            let recipe: BoxedVarBuilder = Rc::new(recipe);
+            variables.variables.insert(name.into(), Box::new(recipe));
         }
     }
 
@@ -715,6 +733,18 @@ inventory::collect!(WrapperRecipe);
 #[macro_export]
 /// Define a recipe to build this view from a config file.
 macro_rules! recipe {
+    ($name:ident from $config_builder:expr) => {
+        #[cfg(feature = "builder")]
+        $crate::submit! {
+            $crate::builder::Recipe {
+                name: stringify!($name),
+                builder: |config, context| {
+                    let template = $config_builder;
+                    context.build_template(config, &template)
+                },
+            }
+        }
+    };
     (with $name:ident, $builder:expr) => {
         #[cfg(feature = "builder")]
         $crate::submit! {
@@ -750,6 +780,7 @@ macro_rules! recipe {
 /// Define a macro for a variable builder.
 macro_rules! var_recipe {
     ($name: expr, $builder:expr) => {
+        #[cfg(feature = "builder")]
         $crate::submit! {
             $crate::builder::CallbackRecipe {
                 name: $name,
